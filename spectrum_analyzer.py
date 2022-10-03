@@ -9,20 +9,68 @@ import numpy, os
 import matplotlib.pyplot as plt
 
 # FOR OCEAN OPTICS HR4000
-from seabreeze.spectrometers import Spectrometer
+from seabreeze.spectrometers import Spectrometer, list_devices
 
 
 def main():
-    filename = 'tests/dc-99.csv'
+    # filename = 'tests/dc-99.csv'
+    
+    # A = SpectrumAnalyzer()
+    # A.loadData(filename)
+    # a, b = A.findStatistics()
+    # print(a)
+    # print(b)
+    # A.plotSpectrum()
     
     A = SpectrumAnalyzer()
-    A.loadData(filename)
-    a, b = A.findStatistics()
-    print(a)
-    print(b)
+    A.listDevices()
+    A.connect()
+    
+    A.measureSpectrum()
     A.plotSpectrum()
+    
+    results = A.findStatistics()
+    
+    print(results[0])
+    
     return
 
+class SpecStats:
+    mean = 0
+    sdev = 0
+    skew = 0
+    kurt = 0
+    
+    def calcState(self, x, yf):
+        self.x = x
+        self.yf = yf
+        self.calcMean()
+        self.calcSdev()
+        self.calcSkew()
+        self.calcKurt()
+        return
+        
+    def getMean(self):
+        self.mean = numpy.dot(self.x, self.yf)
+        return
+    
+    def getSdev(self):
+        n = 2
+        moment = numpy.dot((self.x - self.mean)**n, self.yf)
+        self.sdev = math.sqrt(abs(moment))
+        return
+
+    def getSkew(self):
+        n = 3
+        moment = numpy.dot((self.x - self.mean)**n, self.yf)
+        self.skew = moment / (self.sdev**n)
+        return
+
+    def getKurt(self):
+        n = 4
+        moment = numpy.dot((self.x - self.mean)**n, self.yf)
+        self.kurt = moment / (self.sdev**n)
+        return
 
 # CONTROLS THE OCEAN OPTICS HR4000 OSA
 # REQUIRES SEABREEZE TO BE INSTALLED
@@ -38,8 +86,13 @@ class SpectrumAnalyzer():
 
         """
         return
-        
-    def connect(self, integration_time = 2000, serialnum = "HR4D1482"):
+    
+    def listDevices(self):
+        devices = list_devices()
+        print(devices)
+        return
+    
+    def connect(self, integration_time = 1500, serialnum = "HR4D3341"):
         """
         Connect to device
         """
@@ -101,7 +154,7 @@ class SpectrumAnalyzer():
         tmp_int = tmp_int/numpy.sum(tmp_int)
         
         # Set the max filter level
-        filterlv = 0.0002
+        filterlv = 0.0015
         
         # Zero values unter the filterlv
         for i in range(0,len(tmp_int)):
@@ -110,15 +163,13 @@ class SpectrumAnalyzer():
         
         tmp_int = tmp_int/numpy.sum(tmp_int)
         
-        # Find the weighted mean
-        wmean = numpy.dot(tmp_int,self.wavelengths)
+        # plt.figure(2)
+        # plt.plot(tmp_int)
         
-        # Calculate the standard deviation
-        n = 2
-        moment = numpy.dot((self.wavelengths - wmean)**n, tmp_int)
-        sdev = math.sqrt(abs(moment))
+        stats = SpecStats()
+        stats.calcState(self.wavelengths, tmp_int)
 
-        return wmean, sdev
+        return stats.mean, stats.sdev
     
     def measureSpectrum(self):
         """

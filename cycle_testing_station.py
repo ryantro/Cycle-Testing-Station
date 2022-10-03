@@ -20,6 +20,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+import os
 
 # FOR UNIT TESTING
 import random
@@ -33,9 +34,31 @@ import spectrum_analyzer
 # STAGE CONTROL
 import arduino
 
+# Laser drivers
+import current_supply
+
+class DeviceAddrs:
+     cs1 = 'COM3'
+     cs2 = 'COM5'
+     cs3 = 'COM8'
+     cs4 = 'COM6'
+     cs5 = 'COM7'
+     osa = 'HR4D3341'
+     ard = 'COM4'
+     pm  = 'USB0::0x1313::0x8076::M00808684'
+
+class Module_Positions:
+    m1 = 475
+    m2 = 6475
+    m3 = 12515
+    m4 = 18535
+    m5 = 24555
+
 class Application:
     def __init__(self, master):
         """ CREATE THE PROGRAM GUI """
+        self.devices = DeviceAddrs()
+        self.modules = Module_Positions()
         
         # APPLICATION MASTER FRAME
         self.master = master
@@ -90,6 +113,7 @@ class Application:
         self.mFrames.columnconfigure([0, 1, 2, 3, 4], minsize=10, weight=1)
         self.mFrames.grid(row = 2, column = 0, columnspan = 3, padx = 5, pady = (0,10), sticky = "EW")
         
+        """ Create laser modules """
         self.Ms = []
         for i in range(0,5):
             self.Ms.append(LaserModule(self.mFrames, i))
@@ -100,24 +124,74 @@ class Application:
         # FRAME PACKING
         self.runframe.pack()
         
+        # CONNECT AND ATTACH DEVICES
         self.connectDevices()
         return
     
     
-    def connectDevices(self, arduinoCom = 'COM10', pmcom = '', sacom = ''):
-        self.stage = arduino.Stage('COM10')
+    def connectDevices(self):
+        
+        # CONNECT STAGE
+        self.stage = arduino.Stage(self.devices.ard)
+        
+        # CONNECT POWER METER
+        self.pm = power_meter.PowerMeter(usbaddr = self.devices.pm)
+        
+        # CONNECT TO OSA
+        self.osa = spectrum_analyzer.SpectrumAnalyzer()
+        self.osa.connect(integration_time = 1500, serialnum = self.devices.osa)
+        
+        # CONNECT LASER DRIVERS
+        self.ld1 = current_supply.PS2000B(self.devices.cs1)
+        self.ld2 = current_supply.PS2000B(self.devices.cs2)
+        self.ld3 = current_supply.PS2000B(self.devices.cs3)
+        self.ld4 = current_supply.PS2000B(self.devices.cs4)
+        self.ld5 = current_supply.PS2000B(self.devices.cs5)
+        
+        # Create laser driver list
+        self.lds = [self.ld1, self.ld2, self.ld3, self.ld4, self.ld5]
+
+        # Configure laser drivers
+        for ld in self.lds:
+            ld.enable_remote_control()
+            ld.set_current(0)
+            ld.enable_output()
+             
+        # ZERO STAGE
         self.stage.zero()
         
-        pos = 5000
+        # Set postions of modules
+        self.Ms[0].setPos(self.modules.m1)
+        self.Ms[1].setPos(self.modules.m2)
+        self.Ms[2].setPos(self.modules.m3)
+        self.Ms[3].setPos(self.modules.m4)
+        self.Ms[4].setPos(self.modules.m5)
+        
+        # Attach lasers drivers to modules
+        self.Ms[0].connectLD(self.ld1)
+        self.Ms[1].connectLD(self.ld2)
+        self.Ms[2].connectLD(self.ld3)
+        self.Ms[3].connectLD(self.ld4)
+        self.Ms[4].connectLD(self.ld5)
+        
+        # Attach instruments to modules
         for M in self.Ms:
-            M.attachStage(pos, self.stage)
-            pos = pos + 5000
+            M.devices.connectPM(self.pm)
+            M.devices.connectOSA(self.osa)
+            M.devices.connectStage(self.stage)
         
         return
     
     def closeDevices(self):
-        self.stage.close()
         
+        for ld in self.lds:
+            ld.set_current(0)
+            ld.disable_output()
+            ld.close()
+        
+        self.stage.close()
+        self.pm.close()
+        self.osa.close()
         return
     
     
@@ -167,78 +241,58 @@ class Application:
         self.statelabel.grid(row = 0, column = 1, padx = 0, pady = 0, sticky = "NSEW")
 
         # CLOSE THE THREAD IF IT IS CURRENTLY ALIVE
-        if(self.recordThread.is_alive() == True):
+        while(self.recordThread.is_alive() == True):
             
             # CREATE THE THREAD
-            self.recordThread.join(10000) # timeout of 10 seconds
+            print("Waiting for thread to finish...")
+            time.sleep(2)
 
         return
 
     """FOR TESTING"""
     def record(self):
         # RECORD DATA WHILE RECORDING
+        self.cycled = False
+        
+        # Turn lasers on!!!
+        for M in self.Ms:
+            print("L")
+        
         while(self.recording):
             
             for M in self.Ms:
                 if(M.enabled):
-                    M.recordPower()
-                    M.recordSpectrum()
+                    
+                    """ turn on lasers """
+                    if(self.cycled):
+                        t1 = time.time()
+                        for M in self.Ms:
+                            print("Lazas on")
+                    
+                    M.measure()
+                    
+                    """ time laser was on """
+                    if(self.cycled):
+                        ton = time.time() - t1
+                        if(ton < 20):
+                            time.sleep(20-ton)
+                    
+                    
+                    """ turn lasers off """
+                    if(self.cycled):
+                        for M in self.Ms:
+                            print("Lazas off")
+                        time.sleep(20)
+                    
+                    
+                    #time
             
             # SLEEP
             time.sleep(1)
-
-    def record2(self):
-        """ RECORD DATA FROM THE POWER METER """
-        
-        try:
-            # CONNECT TO POWER METER DEVICE
-            PM = power_meter.PowerMeter()
-        
-            # CLEAR LISTS
-            self.tList = []
-            self.pList = []
             
-            # CONFIGURE PLOT
-            self.powerPlot.cla()
-            self.powerPlot.set_title("Power")
-            self.powerPlot.set_ylabel("Power (mW)", fontsize = 14)
-            self.powerPlot.set_xlabel("Time (s)", fontsize = 14)
-            self.powerPlot.grid('On')
-            
-            # MARK START TIME
-            startTime = time.time()
-            
-            # RECORD DATA WHILE RECORDING
-            while(self.recording):
-                
-                # UPDATE THE MOST RECENT VALUE
-                recentVal = PM.getPower2()
-                self.var.set("Power: {:.4f} mW".format(recentVal))
-                
-                # APPEND VALUES TO LISTS
-                self.tList.append(time.time())
-                self.pList.append(recentVal)
-                
-                # UPDATE THE PLOTS
-                if(len(self.tList) > 1):
-                    self.powerPlot.plot([self.tList[-2] - startTime, self.tList[-1] - startTime], [self.pList[-2], self.pList[-1]], color = 'orange') #self.tList, self.pList)
-                
-                # UPDATE CANVAS
-                self.canvas.draw_idle()
-                
-                if(self.saveVar.get()):
-                    print("Saving")
-                    with open(self.entry.get(), 'a') as f:
-                        # WRITE VALUES TO FILES
-                        f.write("{}, {}\n".format(self.tList[-1], self.pList[-1]))
-                    
-                # SLEEP
-                time.sleep(1)
-        
-        finally:
-            self.closeDevices()
-            # CLOSE DEVICE
-            PM.close()
+        # TURN LASERS OFF !!!
+        for M in self.Ms:
+            print("Lazas off")
         
         return
     
@@ -248,7 +302,11 @@ class Application:
         # PROMPT DIALOG BOX
         if tk.messagebox.askokcancel("Quit", "Do you want to quit?"):
             
+            
+            
             self.stateDisable()
+            
+            self.closeDevices()
             
             # SET RECORDING TO FALSE
             # self.recording = False
@@ -260,6 +318,58 @@ class Application:
             # DESTROY APPLICATION
             self.master.destroy()
             
+        return
+
+class Devices:
+    stage = None
+    pm = None
+    osa = None
+    ld = None
+    
+    def connectStage(self, stage):
+        self.stage = stage
+        return
+    
+    def connectPM(self, pm):
+        self.pm = pm
+        return
+    
+    def connectOSA(self, osa):
+        self.osa = osa
+        return
+    
+    def connectLD(self, ld):
+        self.ld = ld
+        return
+
+    def checkConnected(self):
+        if(self.stage == None or self.pm == None or self.osa == None or self.ld == None):
+            return False
+        else:
+            return True
+
+class Values:
+    power = 0
+    wl = 0
+    lw = 0
+    sk = 0
+    kt = 0
+    
+    def reset(self):
+        self.power = 0
+        self.wl = 0
+        self.lw = 0
+        self.sk = 0
+        self.kt = 0
+        return
+        
+    def save(self, title):
+        """ Save file """
+        t = time.time()
+        saveline = "{}, {}, {}, {}, {}, {}\n".format(t, self.power, self.wl, self.lw, self.sk, self.kt)
+        os.makedirs(os.path.dirname(title), exist_ok=True)
+        with open(title, 'a') as file_obj:
+            file_obj.write(saveline)
         return
 
 class LaserModule:
@@ -306,7 +416,7 @@ class LaserModule:
         self.stateframe.grid(row = 5, column = 0, columnspan = 3, padx = 5, sticky = "EW")
         
         # MEASURE BUTTON
-        self.measureButton = tk.Button(self.master, text="MEASURE", command=self.measure, font = ('Ariel 8'))
+        self.measureButton = tk.Button(self.master, text="MEASURE", command=self.measureSingle, font = ('Ariel 8'))
         self.measureButton.grid(row = 6, column = 0, columnspan = 3, padx = 5, sticky = "EW")
         
         # STATE
@@ -322,24 +432,67 @@ class LaserModule:
         
         # Position
         self.pos = 0
-        self.specOffSet= 4000
+        self.specOffSet = 7080
         
-        # Stage
-        self.stage = None
+        # Create a devices object
+        self.devices = Devices()
+        
+        # Create a values object
+        self.values = Values()
+        
+        # time of state change
+        self.tStateChange = time.time()
         return
     
-    def attachStage(self, pos, stage):
+    def setPos(self, pos):
         self.pos = pos
-        self.stage = stage
         return
+    
+    def turnOn(self):
+        """ Turn the laser on """
+        if(self.enabled):
+            self.tStateChange = time.time()
+            current = 2.8
+            self.devices.ld.set_current(current)
+        return
+    
+    def turnOff(self):
+        """ Turn the laser off """
+        self.tStateChange = time.time()
+        self.devices.ld.set_current(0)
+        return
+    
+    def measureSingle(self):
+        self.devices.ld.set_current(2.8)
+        self.measure()
+        self.devices.ld.set_current(0)
     
     def measure(self):
-        print("Measure clicked")
-        
-        if(self.stage == None):
-            return
-        
-        self.stage.move(self.pos)
+        """ Measure the power and wavelength """
+        if(self.enabled):
+            tsleep = 10
+            
+            if(self.devices.stage == None):
+                return
+            
+            self.devices.stage.move(self.pos)
+            
+            print('sleeping {} seconds before measuring power...'.format(tsleep))
+            time.sleep(tsleep)
+            
+            # Record power
+            self.devices.recordPower()
+            
+            # Move osa to module
+            self.devices.stage.relmove(self.specOffSet)
+            
+            # Record spectrum
+            self.devices.recordSpectrum()
+            
+            # Save data
+            filename = self.moduleFrame.get()
+            self.values.save('test-data/{}.csv'.format(filename))
+            
         
         return
     
@@ -350,11 +503,12 @@ class LaserModule:
         if(self.enabled == False):
             return
         
-        # UNIT TEST
-        power = 24.0
+        # Record power
+        self.values.power = self.devices.pm.getPower2()
         
-        # UPDATE POWER ON THE GUI
-        self.updatePower(power)
+        # Update gui
+        pStr = "Power: {:.4f} W".format(self.values.power)
+        self.pVar.set(pStr)
         
         return
     
@@ -365,11 +519,21 @@ class LaserModule:
         if(self.enabled == False):
             return
         
+        # Take a spectrum
+        self.devices.osa.measureSpectrum()
         
-        wl = 450.0
+        # Get the statistics
+        results = self.devices.osa.findStatistics()
         
-        # UPDATE SPECTRUM ON THE GUI
-        self.updateWl(wl)
+        # Find the mean wavelength
+        self.values.wl = results[0]
+        
+        # Find the weighted standard deviation
+        self.values.lw = results[1]
+        
+        # Update the gui
+        sStr = "Center WL: {:.4f} nm".format(self.values.wl)
+        self.sVar.set(sStr)
         
         return
     
@@ -409,26 +573,6 @@ class LaserModule:
         
         # MEASURE BUTTON
         self.measureButton.configure(state = 'disabled')
-        return
-    
-    def updatePower(self, power):
-        """
-        UPDATE THE POWER OF THE GUI
-        """
-        
-        pStr = "Power: {:.4f} W".format(power)
-        self.pVar.set(pStr)
-        
-        return
-    
-    def updateWl(self, wl):
-        """
-        UPDATE THE WAVELENGTH OF THE GUI
-        """
-        
-        sStr = "Center WL: {:.4f} nm".format(wl)
-        self.sVar.set(sStr)
-        
         return
 
 def main():
