@@ -4,7 +4,7 @@ String incomingStr;
 #define PUL 9
 #define DIR 8
 
-#define LZ 10
+#define LZ 12
 #define LM 11 
 
 

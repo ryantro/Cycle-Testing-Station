@@ -21,6 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 import os
+import stat
 
 # FOR UNIT TESTING
 import random
@@ -86,7 +87,7 @@ class Application:
         # CHECK BOX
         self.saveVar = tk.BooleanVar()
         self.saveVar.set(False)
-        self.saveBox = tk.Checkbutton(self.runframe, text='Save To CSV', variable = self.saveVar, onvalue = True, offvalue = False, font = ('Ariel 10'))
+        self.saveBox = tk.Checkbutton(self.runframe, text='Cycled?', variable = self.saveVar, onvalue = True, offvalue = False, font = ('Ariel 10'))
         self.saveBox.grid(row = 0, column = 2, sticky = "E", padx = 10)
 
         # GENERATE STATION ENABLE BOX
@@ -134,6 +135,9 @@ class Application:
         # CONNECT STAGE
         self.stage = arduino.Stage(self.devices.ard)
         
+        # ZERO STAGE
+        self.stage.zero()
+        
         # CONNECT POWER METER
         self.pm = power_meter.PowerMeter(usbaddr = self.devices.pm)
         
@@ -154,11 +158,10 @@ class Application:
         # Configure laser drivers
         for ld in self.lds:
             ld.enable_remote_control()
+            ld.disable_output()
+            ld.set_voltage(35)
             ld.set_current(0)
             ld.enable_output()
-             
-        # ZERO STAGE
-        self.stage.zero()
         
         # Set postions of modules
         self.Ms[0].setPos(self.modules.m1)
@@ -168,13 +171,15 @@ class Application:
         self.Ms[4].setPos(self.modules.m5)
         
         # Attach lasers drivers to modules
-        self.Ms[0].connectLD(self.ld1)
-        self.Ms[1].connectLD(self.ld2)
-        self.Ms[2].connectLD(self.ld3)
-        self.Ms[3].connectLD(self.ld4)
-        self.Ms[4].connectLD(self.ld5)
+        print("Connecting to laser drivers...")
+        self.Ms[0].devices.connectLD(self.ld1)
+        self.Ms[1].devices.connectLD(self.ld2)
+        self.Ms[2].devices.connectLD(self.ld3)
+        self.Ms[3].devices.connectLD(self.ld4)
+        self.Ms[4].devices.connectLD(self.ld5)
         
         # Attach instruments to modules
+        print("connecting other devices")
         for M in self.Ms:
             M.devices.connectPM(self.pm)
             M.devices.connectOSA(self.osa)
@@ -240,60 +245,99 @@ class Application:
         self.statelabel = tk.Label(self.stateframe, text=" RECORDING OFF ", bg = '#84e47e', font = ('Ariel 15'))
         self.statelabel.grid(row = 0, column = 1, padx = 0, pady = 0, sticky = "NSEW")
 
-        # CLOSE THE THREAD IF IT IS CURRENTLY ALIVE
-        while(self.recordThread.is_alive() == True):
+        self.stateButton.configure(state = 'disabled')
+        
+        # # CLOSE THE THREAD IF IT IS CURRENTLY ALIVE
+        # while(self.recordThread.is_alive() == True):
             
-            # CREATE THE THREAD
-            print("Waiting for thread to finish...")
-            time.sleep(2)
+        #     # CREATE THE THREAD
+        #     print("Waiting for thread to finish...")
+        #     time.sleep(2)
 
+        # print("Thread finished")
         return
 
     """FOR TESTING"""
     def record(self):
-        # RECORD DATA WHILE RECORDING
-        self.cycled = False
+        n = 0
         
+        ct = 20 # cycle times
+        
+        # Get folder name
+        folder = self.entry.get()
+        for M in self.Ms:
+            M.setFolder(folder)
+            
         # Turn lasers on!!!
         for M in self.Ms:
-            print("L")
+            if(M.enabled):
+                M.turnOn()
+                print("Lasers on!")
+        
+        # Check cycled box
+        self.cycled = self.saveVar.get()
+        self.saveBox.configure(state = 'disabled')
         
         while(self.recording):
             
+            
+            # Measure modules
             for M in self.Ms:
+                
+                if(self.recording == False):
+                    break
+                
                 if(M.enabled):
                     
-                    """ turn on lasers """
                     if(self.cycled):
-                        t1 = time.time()
-                        for M in self.Ms:
-                            print("Lazas on")
+                        """ turn lasers off """
+                        print("...Cycle test: Lasers off")
+                        for m in self.Ms:
+                            m.turnOff()
+                        
+                        t1 = time.time() # time that lasers were turned off
+                    
+                        M.preMove()
+                
+                        toff = time.time() - t1 # time since lasers were turned off
+                        if(toff < ct):
+                            time.sleep(ct-toff)
+                    
+                        """ turn on lasers """
+                        print("...Cycle test: Lasers on")
+                        t2 = time.time() # time that lasers were turned on
+                        for m in self.Ms:
+                            m.turnOn()
                     
                     M.measure()
                     
                     """ time laser was on """
                     if(self.cycled):
-                        ton = time.time() - t1
-                        if(ton < 20):
-                            time.sleep(20-ton)
+                        ton = time.time() - t2 # time since lasers were turned on
+                        if(ton < ct):
+                            time.sleep(ct-ton)
                     
                     
-                    """ turn lasers off """
-                    if(self.cycled):
-                        for M in self.Ms:
-                            print("Lazas off")
-                        time.sleep(20)
-                    
-                    
-                    #time
-            
+            # Check if stage should be re-zero'd      
+            n = n + 1
+            if(n > 20):
+                self.stage.zero()
+                n = 0
+                      
             # SLEEP
             time.sleep(1)
-            
+        
         # TURN LASERS OFF !!!
         for M in self.Ms:
-            print("Lazas off")
+            M.turnOff()
+            
+        # Enable check box
+        self.saveBox.configure(state = 'normal')
         
+        # Enable run button
+        self.stateButton.configure(state = 'normal')
+        
+        print("Test finished.")
         return
     
     def on_closing(self):
@@ -362,14 +406,21 @@ class Values:
         self.sk = 0
         self.kt = 0
         return
-        
+    
     def save(self, title):
         """ Save file """
         t = time.time()
         saveline = "{}, {}, {}, {}, {}, {}\n".format(t, self.power, self.wl, self.lw, self.sk, self.kt)
         os.makedirs(os.path.dirname(title), exist_ok=True)
+        
+        if(os.path.exists(title)):
+            os.chmod(title, stat.S_IWRITE) # Make read/write
+            
         with open(title, 'a') as file_obj:
             file_obj.write(saveline)
+            
+        os.chmod(title, stat.S_IREAD) # Make read only
+        
         return
 
 class LaserModule:
@@ -419,6 +470,12 @@ class LaserModule:
         self.measureButton = tk.Button(self.master, text="MEASURE", command=self.measureSingle, font = ('Ariel 8'))
         self.measureButton.grid(row = 6, column = 0, columnspan = 3, padx = 5, sticky = "EW")
         
+        
+        # ENTRY BOX
+        self.plFrame = tk.Entry(self.master, text = 'Power {}'.format(g), width = 10, font = ('Ariel 15'))
+        self.plFrame.grid(row = 7, column = 0, sticky = "EW", padx = 5)
+        self.plFrame.insert(0, r'20.0')
+        
         # STATE
         self.enabled = True
         
@@ -442,6 +499,11 @@ class LaserModule:
         
         # time of state change
         self.tStateChange = time.time()
+        
+        self.folder = 'record-data'
+        
+        self.filename_old = ''
+        self.tstart = time.time()
         return
     
     def setPos(self, pos):
@@ -467,10 +529,18 @@ class LaserModule:
         self.measure()
         self.devices.ld.set_current(0)
     
+    def setFolder(self, folder):
+        self.folder = folder    
+        return
+    
+    def preMove(self):
+        self.devices.stage.move(self.pos)
+        return
+    
     def measure(self):
         """ Measure the power and wavelength """
         if(self.enabled):
-            tsleep = 10
+            tsleep = 20
             
             if(self.devices.stage == None):
                 return
@@ -481,19 +551,38 @@ class LaserModule:
             time.sleep(tsleep)
             
             # Record power
-            self.devices.recordPower()
+            self.recordPower()
             
             # Move osa to module
             self.devices.stage.relmove(self.specOffSet)
             
             # Record spectrum
-            self.devices.recordSpectrum()
+            self.recordSpectrum()
             
             # Save data
             filename = self.moduleFrame.get()
-            self.values.save('test-data/{}.csv'.format(filename))
+            self.values.save('testdata/{}/{}.csv'.format(self.folder, filename))
             
-        
+            # Display time measurement has been running
+            if(filename != self.filename_old):
+                self.filename_old = filename
+                self.tstart = time.time()
+            t = int(time.time() - self.tstart)
+            
+            seconds = t%60
+            minutes = int((t/60)%60)
+            hours = int(t/3600)
+            
+            # tstr = time.strftime("%H:%M:%S", time.gmtime(t))
+            self.statusVar.set("Runtime: {}:{}:{}".format(hours, minutes, seconds))
+            
+            plim = float(self.plFrame.get())
+            
+            # Disable if power drops too low
+            if(self.values.power < plim):
+                self.disable()
+            
+            
         return
     
     def recordPower(self):
@@ -531,6 +620,10 @@ class LaserModule:
         # Find the weighted standard deviation
         self.values.lw = results[1]
         
+        self.values.sk = results[2]
+        
+        self.values.kt = results[3]
+        
         # Update the gui
         sStr = "Center WL: {:.4f} nm".format(self.values.wl)
         self.sVar.set(sStr)
@@ -560,6 +653,8 @@ class LaserModule:
         """
         SET ENABLED STATE TO FALSE
         """
+        self.turnOff()
+        
         # SET ENABLED STATE TO FALSE
         self.enabled = False
         

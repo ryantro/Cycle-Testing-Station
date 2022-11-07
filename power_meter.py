@@ -17,7 +17,7 @@ SCPI LANGUAGE GUIDE FOR PM101:
     NOTE:
         THE ABREVIATED SCPI COMMANDS DONT SEEM TO WORK. USE THE COMPLETE COMMANDS
 """
-
+import time
 import pyvisa
 
 def main():
@@ -44,11 +44,22 @@ def main():
         print("Setting wavelength to 450 nm")
         PM.setWL(450.0)
         
+        PM.setBeamDia(50)
+        time.sleep(0.2)
+        print("Get beam dia")
+        PM.getBeamDia()
+        
         print("Getting set wavelenght...")
         PM.getWL()
         
+        PM.setAvg(1000)
+        print("Getting info")
+        PM.getInfo()
+        
         print("Getting power reading...")
+        t = time.time()
         PM.getPower2()
+        print(time.time() - t)
     finally:
         print("Closing...")
         PM.close()
@@ -77,7 +88,47 @@ class PowerMeter():
         # PRINT COMMAND RESPONSES?
         self.pprint = pprint
         
+        # Define pre-sets
+        self.preSet()
+        
         return
+    
+    def preSet(self):
+        self.setBeamDia(dia = 50)
+        self.setWL(450)
+        self.setAvg(1000)
+        
+        return
+    
+    def getInfo(self):
+        
+        response = self.pm.send('SENSe:AVERage:COUNt?')
+        
+        print(response)
+        
+        return response
+    
+    def setBeamDia(self, dia = 50):
+        
+        command = "SENSe:CORRection:BEAMdiameter {}".format(dia)
+        
+        self.pm.write(command)
+        
+        return
+    
+    def getBeamDia(self):
+        
+        response = self.pm.send('SENSe:CORRection:BEAMdiameter?')
+        
+        print(response)
+        
+        return response
+    
+    def setAvg(self, num = 10):
+        
+        command = 'SENSe:AVERage:COUNt {}'.format(num)
+    
+        self.pm.write(command)
     
     def getIDN(self):
         """

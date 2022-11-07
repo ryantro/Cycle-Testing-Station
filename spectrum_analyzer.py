@@ -44,10 +44,10 @@ class SpecStats:
     def calcState(self, x, yf):
         self.x = x
         self.yf = yf
-        self.calcMean()
-        self.calcSdev()
-        self.calcSkew()
-        self.calcKurt()
+        self.getMean()
+        self.getSdev()
+        self.getSkew()
+        self.getKurt()
         return
         
     def getMean(self):
@@ -169,7 +169,7 @@ class SpectrumAnalyzer():
         stats = SpecStats()
         stats.calcState(self.wavelengths, tmp_int)
 
-        return stats.mean, stats.sdev
+        return stats.mean, stats.sdev, stats.skew, stats.kurt
     
     def measureSpectrum(self):
         """
