@@ -72,29 +72,29 @@ class Application:
         
         # DEFINE RUNFRAME
         self.runframe = tk.Frame(self.master)
-        self.runframe.rowconfigure([0, 1, 2, 3], minsize=30, weight=1)
+        self.runframe.rowconfigure([0, 1], minsize=30, weight=1)
         self.runframe.columnconfigure([0, 1, 2], minsize=25, weight=1)
 
         # ENTRY LABEL
-        self.entryLabel = tk.Label(self.runframe,text="Save folder:", font = ('Ariel 15'))
-        self.entryLabel.grid(row=0, column=0, sticky = "W", padx = 10)
+        # self.entryLabel = tk.Label(self.runframe,text="Save folder:", font = ('Ariel 15'))
+        # self.entryLabel.grid(row=0, column=0, sticky = "W", padx = 10)
         
         # ENTRY BOX
-        self.entry = tk.Entry(self.runframe, text = 'Entry', width = 60, font = ('Ariel 15'))
-        self.entry.grid(row = 0, column = 1, sticky = "W", padx = (0,10), pady = 10)
-        self.entry.insert(0, r'record-folder')
+        # self.entry = tk.Entry(self.runframe, text = 'Entry', width = 60, font = ('Ariel 15'))
+        # self.entry.grid(row = 0, column = 1, sticky = "W", padx = (0,10), pady = 10)
+        # self.entry.insert(0, r'record-folder')
 
         # CHECK BOX
-        self.saveVar = tk.BooleanVar()
-        self.saveVar.set(False)
-        self.saveBox = tk.Checkbutton(self.runframe, text='Cycled?', variable = self.saveVar, onvalue = True, offvalue = False, font = ('Ariel 10'))
-        self.saveBox.grid(row = 0, column = 2, sticky = "E", padx = 10)
+        # self.saveVar = tk.BooleanVar()
+        # self.saveVar.set(False)
+        # self.saveBox = tk.Checkbutton(self.runframe, text='Cycled?', variable = self.saveVar, onvalue = True, offvalue = False, font = ('Ariel 10'))
+        # self.saveBox.grid(row = 0, column = 2, sticky = "E", padx = 10)
 
         # GENERATE STATION ENABLE BOX
         self.stateframe = tk.Frame(self.runframe, borderwidth = 2,relief="groove")
         self.stateframe.columnconfigure([0, 1], minsize=50, weight=1)
         self.stateframe.rowconfigure([0], minsize=50, weight=1)
-        self.stateframe.grid(row = 3, column = 0, columnspan = 3, padx = 10, pady = (0,10), sticky = "EW")
+        self.stateframe.grid(row = 1, column = 0, columnspan = 3, padx = 10, pady = (0,10), sticky = "EW")
         
         # GENERATE ENABLE/DISABLE BUTTON
         self.stateButton = tk.Button(self.stateframe, text="START", command=self.stateEnable, font = ('Ariel 15'))
@@ -112,7 +112,7 @@ class Application:
         # LASER MODULES
         self.mFrames = tk.Frame(self.runframe)
         self.mFrames.columnconfigure([0, 1, 2, 3, 4], minsize=10, weight=1)
-        self.mFrames.grid(row = 2, column = 0, columnspan = 3, padx = 5, pady = (0,10), sticky = "EW")
+        self.mFrames.grid(row = 0, column = 0, columnspan = 3, padx = 5, pady = (0,10), sticky = "EW")
         
         """ Create laser modules """
         self.Ms = []
@@ -131,7 +131,8 @@ class Application:
     
     
     def connectDevices(self):
-        
+        # TODO
+        # return
         # CONNECT STAGE
         self.stage = arduino.Stage(self.devices.ard)
         
@@ -188,23 +189,24 @@ class Application:
         return
     
     def closeDevices(self):
-        
-        for ld in self.lds:
-            ld.set_current(0)
-            ld.disable_output()
-            ld.close()
-        
-        self.stage.close()
-        self.pm.close()
-        self.osa.close()
-        return
+        try:
+            for ld in self.lds:
+                ld.set_current(0)
+                ld.disable_output()
+                ld.close()
+            
+            self.stage.close()
+            self.pm.close()
+            self.osa.close()
+        finally:
+            return
     
     
     def stateEnable(self):
         """ ENABLE THE STATE """
             
         # DISABLE ENTRY BOX
-        self.entry.configure(state = 'disabled')
+        # self.entry.configure(state = 'disabled')
         
         # CONFIGURE BUTTON
         self.stateButton = tk.Button(self.stateframe, text="STOP", command=self.stateDisable, font = ('Ariel 15'))
@@ -235,7 +237,7 @@ class Application:
         self.recording = False
         
         # ENABLE ENTRY BOX
-        self.entry.configure(state = 'normal')
+        # self.entry.configure(state = 'normal')
         
         # CONFIGURE STATE BUTTON
         self.stateButton = tk.Button(self.stateframe, text="START", command=self.stateEnable, font = ('Ariel 15'))
@@ -264,9 +266,9 @@ class Application:
         ct = 20 # cycle times
         
         # Get folder name
-        folder = self.entry.get()
-        for M in self.Ms:
-            M.setFolder(folder)
+        # folder = self.entry.get()
+        # for M in self.Ms:
+        #     M.setFolder(folder)
             
         # Turn lasers on!!!
         for M in self.Ms:
@@ -275,8 +277,10 @@ class Application:
                 print("Lasers on!")
         
         # Check cycled box
-        self.cycled = self.saveVar.get()
-        self.saveBox.configure(state = 'disabled')
+        # self.cycled = self.saveVar.get()
+        # self.saveBox.configure(state = 'disabled')
+        for M in self.Ms:
+            M.disableEntry()
         
         while(self.recording):
             
@@ -289,33 +293,36 @@ class Application:
                 
                 if(M.enabled):
                     
-                    if(self.cycled):
-                        """ turn lasers off """
-                        print("...Cycle test: Lasers off")
-                        for m in self.Ms:
+   
+                    """ turn lasers off if cycled """
+                    for m in self.Ms:
+                        if(m.getCycledStatus()):
                             m.turnOff()
-                        
-                        t1 = time.time() # time that lasers were turned off
                     
-                        M.preMove()
+                    t1 = time.time() # time that lasers were turned off
+                    
+                    # Pre-move to next spot
+                    M.preMove()
+                    
                 
-                        toff = time.time() - t1 # time since lasers were turned off
-                        if(toff < ct):
-                            time.sleep(ct-toff)
-                    
-                        """ turn on lasers """
-                        print("...Cycle test: Lasers on")
-                        t2 = time.time() # time that lasers were turned on
-                        for m in self.Ms:
+                
+                    toff = time.time() - t1 # time since lasers were turned off
+                    if(toff < ct):
+                        time.sleep(ct-toff)
+                
+                    """ turn on lasers if cycled """
+                    print("...Cycle test: Lasers on")
+                    t2 = time.time() # time that lasers were turned on
+                    for m in self.Ms:
+                        if(m.getCycledStatus()):
                             m.turnOn()
                     
                     M.measure()
                     
                     """ time laser was on """
-                    if(self.cycled):
-                        ton = time.time() - t2 # time since lasers were turned on
-                        if(ton < ct):
-                            time.sleep(ct-ton)
+                    ton = time.time() - t2 # time since lasers were turned on
+                    if(ton < ct):
+                        time.sleep(ct-ton)
                     
                     
             # Check if stage should be re-zero'd      
@@ -330,9 +337,12 @@ class Application:
         # TURN LASERS OFF !!!
         for M in self.Ms:
             M.turnOff()
-            
+        
+        for M in self.Ms:
+            M.enableEntry()
+        
         # Enable check box
-        self.saveBox.configure(state = 'normal')
+        # self.saveBox.configure(state = 'normal')
         
         # Enable run button
         self.stateButton.configure(state = 'normal')
@@ -447,34 +457,67 @@ class LaserModule:
         pStr = "Power: {:.4f} W".format(0)
         self.pVar = tk.StringVar(self.master, value = pStr)
         self.pM = tk.Label(self.master, textvariable = self.pVar, font = ('Ariel 8'))
-        self.pM.grid(row=2, column=0, sticky = "w", padx = 5)
+        self.pM.grid(row=5, column=0, sticky = "w", padx = 5)
         
         # MOST RECENT SPECTRUM MEASUREMENT
         sStr = "Center WL: {:.4f} nm".format(0)
         self.sVar = tk.StringVar(self.master, value = sStr)
         self.sM = tk.Label(self.master, textvariable = self.sVar, font = ('Ariel 8'))
-        self.sM.grid(row=3, column=0, sticky = "w", padx = 5)
+        self.sM.grid(row=6, column=0, sticky = "w", padx = 5)
         
         # STATUS BOX
-        self.statusVar = tk.StringVar(self.master, value = "Status: Not started")
+        self.statusVar = tk.StringVar(self.master, value = "Runtime: Not started")
         self.statusLabel = tk.Label(self.master, textvariable = self.statusVar, font = ('Ariel 8'))
-        self.statusLabel.grid(row = 4, column = 0, sticky = "W", padx = 5)
+        self.statusLabel.grid(row = 7, column = 0, sticky = "W", padx = 5)
         
         # ENABLE DISABLE BOX
         self.stateframe = tk.Frame(self.master, borderwidth = 2,relief="groove")
         self.stateframe.columnconfigure([0, 1], minsize=120, weight=1)
         self.stateframe.rowconfigure([0], minsize=5, weight=1)
-        self.stateframe.grid(row = 5, column = 0, columnspan = 3, padx = 5, sticky = "EW")
+        self.stateframe.grid(row = 8, column = 0, columnspan = 3, padx = 5, sticky = "EW")
         
         # MEASURE BUTTON
         self.measureButton = tk.Button(self.master, text="MEASURE", command=self.measureSingle, font = ('Ariel 8'))
-        self.measureButton.grid(row = 6, column = 0, columnspan = 3, padx = 5, sticky = "EW")
+        self.measureButton.grid(row = 9, column = 0, columnspan = 3, padx = 5, sticky = "EW")
         
+        """ POWER FRAME """
+        # POWER LIMIT
+        self.plimFrame = tk.Frame(self.master)
+        self.plimFrame.rowconfigure([0], minsize=5, weight=1)
+        self.plimFrame.columnconfigure([0, 1], minsize=5, weight=1)
+        self.plimFrame.grid(row = 3, column = 0, sticky = 'EW', padx = 5)
         
         # ENTRY BOX
-        self.plFrame = tk.Entry(self.master, text = 'Power {}'.format(g), width = 10, font = ('Ariel 15'))
-        self.plFrame.grid(row = 7, column = 0, sticky = "EW", padx = 5)
-        self.plFrame.insert(0, r'20.0')
+        self.plimEntry = tk.Entry(self.plimFrame, text = 'Power {}'.format(g), width = 20, font = ('Ariel 8'))
+        self.plimEntry.grid(row = 0, column = 1, sticky = "E", padx = 0)
+        self.plimEntry.insert(0, r'19.5')
+        
+        # POWER LIMIT LABEL
+        self.plimLabel = tk.Label(self.plimFrame, text = 'Shutoff Power (W):', font = ('Ariel 8'))
+        self.plimLabel.grid(row = 0, column = 0, sticky = "W", padx = 0)
+        
+        """ CHECK BOX """
+        # CHECK BOX
+        self.cycleVar = tk.BooleanVar()
+        self.cycleVar.set(False)
+        self.cycleBox = tk.Checkbutton(self.master, text='Cycled?', variable = self.cycleVar, onvalue = True, offvalue = False, font = ('Ariel 8'))
+        self.cycleBox.grid(row = 2, column = 0, sticky = "W", padx = 5)
+        
+        """ SAVE FOLDER """
+        # POWER LIMIT
+        self.saveFrame = tk.Frame(self.master)
+        self.saveFrame.rowconfigure([0], minsize=5, weight=1)
+        self.saveFrame.columnconfigure([0, 1], minsize=5, weight=1)
+        self.saveFrame.grid(row = 4, column = 0, sticky = 'EW', padx = 5)
+        
+        # ENTRY BOX
+        self.saveEntry = tk.Entry(self.saveFrame, text = 'Solder {}'.format(g), width = 20, font = ('Ariel 8'))
+        self.saveEntry.grid(row = 0, column = 1, sticky = "E", padx = 0)
+        self.saveEntry.insert(0, r'Station-Test')
+        
+        # POWER LIMIT LABEL
+        self.saveLabel = tk.Label(self.saveFrame, text = 'Folder:', font = ('Ariel 8'))
+        self.saveLabel.grid(row = 0, column = 0, sticky = "W", padx = 0)
         
         # STATE
         self.enabled = True
@@ -504,7 +547,22 @@ class LaserModule:
         
         self.filename_old = ''
         self.tstart = time.time()
+        
+        # Is device cycled?
+        self.cycled = False
         return
+    
+    def disableEntry(self):
+        print('Disabling Entry')
+        return
+    
+    def enableEntry(self):
+        print('Enabeling Entry')
+        return
+    
+    def getCycledStatus(self):
+        cycled = self.cycleVar.get()
+        return cycled
     
     def setPos(self, pos):
         self.pos = pos
@@ -529,9 +587,9 @@ class LaserModule:
         self.measure()
         self.devices.ld.set_current(0)
     
-    def setFolder(self, folder):
-        self.folder = folder    
-        return
+    # def setFolder(self, folder):
+    #     self.folder = folder    
+    #     return
     
     def preMove(self):
         self.devices.stage.move(self.pos)
@@ -560,8 +618,9 @@ class LaserModule:
             self.recordSpectrum()
             
             # Save data
+            folder = self.saveEntry.get()
             filename = self.moduleFrame.get()
-            self.values.save('testdata/{}/{}.csv'.format(self.folder, filename))
+            self.values.save('testdata/{}/{}.csv'.format(folder, filename))
             
             # Display time measurement has been running
             if(filename != self.filename_old):
@@ -576,7 +635,7 @@ class LaserModule:
             # tstr = time.strftime("%H:%M:%S", time.gmtime(t))
             self.statusVar.set("Runtime: {}:{}:{}".format(hours, minutes, seconds))
             
-            plim = float(self.plFrame.get())
+            plim = float(self.plimEntry.get())
             
             # Disable if power drops too low
             if(self.values.power < plim):
